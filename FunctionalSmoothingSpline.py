@@ -53,7 +53,8 @@ def FunctionalSmoothingSpline(
 			knots_number = None,  # number of knots
 			alpha = 1,            # smoothing parameter
 			x = None,             # output moments
-            All_Positive = False,  # 
+            All_Positive = False,  # solve as monotone spline by Lemke algorithm
+            integral = False,      # return integral function F(t)
 			info = False):         # need info?
 
 	
@@ -328,15 +329,32 @@ def FunctionalSmoothingSpline(
 	
     if x is None:
         x = np.append( np.arange(knots[0],knots[-1],1) , knots[-1])
-    y = np.zeros(len(x)) 
-    k = 0 #index of interval 
-    for j in range(len(x)):
-        while x[j]>knots[k]+h[k] and k<m:
-            k += 1
-        hk_m = x[j] - knots[k]
-        hk_p = knots[k + 1] - x[j]
-        y[j] = (hk_m*g[k + 1] + hk_p*g[k])/h[k] - 1/6*hk_m*hk_p*(g2[k + 1]*(1 + hk_m/h[k]) + g2[k]*(1 + hk_p/h[k])  )
-	
+    y = np.zeros(len(x))
+    
+    if not integral:
+        k = 0  
+        for j in range(len(x)):
+            while x[j]>knots[k]+h[k] and k<m:
+                k += 1
+            hk_m = x[j] - knots[k]
+            hk_p = knots[k + 1] - x[j]
+            y[j] = (hk_m*g[k + 1] + hk_p*g[k])/h[k] - 1/6*hk_m*hk_p*(g2[k + 1]*(1 + hk_m/h[k]) + g2[k]*(1 + hk_p/h[k])  )
+
+    else: #return integral function F(t)
+        L = 0 
+        l = -1
+        SumL = 0
+        for j in range(len(x)):
+            while x[j]>knots[L]+h[L] and L<m:
+                L += 1
+            while l < L:
+                l += 1
+                SumL += h[l]*(g[l+1]+g[l])/2 - h[l]**3*(g2[l+1] +g2[l])/24
+            hL_m = x[j] - knots[L]
+            hL_p = knots[L + 1] - x[j]
+            y[j] = SumL - ( (h[L]**2-hL_m**2)*g[L+1] + hL_p**2*g[L] )/h[L]/2  \
+                        + hL_p**2*((hL_m+h[L])**2*g2[L+1] - (hL_p**2-2*h[L]**2)*g2[L])/h[L]/24
+        
     if info:
         error_total = 0
         error_f = 0
