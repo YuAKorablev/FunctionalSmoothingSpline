@@ -44,10 +44,10 @@ def FunctionalSmoothingSpline(
 			values_d2f = None,    # array of second derivative values
 			weights_d2f = None,   # array of second derivative weights
 			coef_d2f = 1,         # coefficient of second derivative sum of squares
-			t_int_a = None,       # array of interals start moments
-			t_int_b = None,       # array of interals end moments
-			values_int = None,    # array of interal values
-			weights_int = None,   # array of interal weights
+			t_int_a = None,       # array of integrals start moments
+			t_int_b = None,       # array of integrals end moments
+			values_int = None,    # array of integral values
+			weights_int = None,   # array of integral weights
 			coef_int = 1,         # coefficient of integral sum of squares
 			knots = None,         # knots
 			knots_number = None,  # number of knots
@@ -380,28 +380,28 @@ def FunctionalSmoothingSpline(
             V = values_f - Cf @ g
             error_f = (np.transpose(V) @ Wf @ V).item()
             V = np.abs(V / values_f)
-            relative_abs_error_f = (np.transpose(V) @ Wf @ V).item() / nf
+            relative_abs_error_f = np.sum(V*weights_f)/nf # (np.transpose(V) @ Wf @ V).item() / nf
             V = V**2
             relative_sqr_error_f = np.sqrt((np.transpose(V) @ Wf @ V).item() / nf)
         if t_df is not None and len(t_df)>0:
             V = values_df - Cdf @ g
             error_df = (np.transpose(V) @ Wdf @ V).item()
             V = np.abs(V / values_df) 
-            relative_abs_error_df = (np.transpose(V) @ Wdf @ V).item() / ndf
+            relative_abs_error_df = np.sum(V*weights_df)/ndf # (np.transpose(V) @ Wdf @ V).item() / ndf
             V = V**2
             relative_sqr_error_df = np.sqrt((np.transpose(V) @ Wdf @ V).item() / ndf) 
         if t_d2f is not None and len(t_d2f):
             V = values_d2f - Cd2f @ g
             error_d2f = (np.transpose(V) @ Wd2f @ V).item()
             V = np.abs(V / values_d2f) 
-            relative_abs_error_d2f = (np.transpose(V) @ Wd2f @ V).item() / nd2f
+            relative_abs_error_d2f = np.sum(V*weights_d2f)/nd2f # (np.transpose(V) @ Wd2f @ V).item() / nd2f
             V = V**2
             relative_sqr_error_d2f = np.sqrt((np.transpose(V) @ Wd2f @ V).item() / nd2f)
         if t_int_a is not None and len(t_int_a)>0:
             V = values_int - Cint @ g
             error_int = (np.transpose(V) @ Wint @ V).item()
             V = np.abs(V / values_int) 
-            relative_abs_error_int = (np.transpose(V) @ Wint @ V).item() / nint
+            relative_abs_error_int = np.sum(V*weights_int)/nint # (np.transpose(V) @ Wint @ V).item() / nint
             V = V**2
             relative_sqr_error_int = np.sqrt((np.transpose(V) @ Wint @ V).item() / nint)
             
