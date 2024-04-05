@@ -68,6 +68,9 @@ def FunctionalSmoothingSpline(
             knots_number = len(t_d2f)
         if t_int_a is not None and len(t_int_a)>0 and knots_number<len(t_int_a):
             knots_number = len(t_int_a)
+            
+    if knots is not None:
+        knots_number = len(knots)
 
     assert knots_number >= 2, 'knots_number or observations should not be less than 2'
 	
