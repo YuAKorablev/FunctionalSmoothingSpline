@@ -31,6 +31,7 @@
 import numpy as np
 from numba import njit,types
 from MyLemke2 import *
+import cvxopt
 
 def FunctionalSmoothingSpline(
 			t_f = None,           # array of observation moments
@@ -54,6 +55,7 @@ def FunctionalSmoothingSpline(
 			alpha = 1,            # smoothing parameter
 			x = None,             # output moments
             All_Positive = False,  # solve as monotone spline by Lemke algorithm
+            method = "Lemke",      # method for solving a quadratic programming problem
             integral = False,      # return integral function F(t)
 			info = False):         # need info?
 
@@ -313,7 +315,24 @@ def FunctionalSmoothingSpline(
         
     #Calculation of g and gamma
     if All_Positive:
-        g, exit_code, exit_string = Lemke_njit(A, -D, maxIter = 10000) # if you dont want njit optimization with numba, just delete _njit and call Lemke(A, -D, maxIter = 10000)
+        if method == "Lemke":
+            g, exit_code, exit_string = Lemke(A, -D, maxIter=10000)
+        else:
+            if method == "Lemke_njit":
+                g, exit_code, exit_string = Lemke_njit(A, -D, maxIter=10000)
+            else:
+                if method == "cvxopt":
+                    args = [cvxopt.matrix(A), cvxopt.matrix(-D)]
+                    args.extend([cvxopt.matrix(-np.eye(m)), cvxopt.matrix(np.zeros(m))])
+                    sol = cvxopt.solvers.qp(*args)
+                    if 'optimal' not in sol['status']:
+                        return [np.nan]
+                    else:
+                        print("cvxopt")
+                        g = np.array(sol['x']).reshape((A.shape[1],))
+                else:
+                    assert method in ["Lemke","Lemke_njit","cvxopt"], 'incorrect method specified'
+
         if g[0] == np.nan:
             print("g is np.nan")
             print("alpha = ", alpha)
@@ -382,31 +401,47 @@ def FunctionalSmoothingSpline(
         if t_f is not None and len(t_f)>0:
             V = values_f - Cf @ g
             error_f = (np.transpose(V) @ Wf @ V).item()
-            V = np.abs(V / values_f)
-            relative_abs_error_f = np.sum(V*weights_f)/nf # (np.transpose(V) @ Wf @ V).item() / nf
-            V = V**2
-            relative_sqr_error_f = np.sqrt((np.transpose(V) @ Wf @ V).item() / nf)
+            if np.any(values_f == 0 ):
+                relative_abs_error_f = np.inf
+                relative_sqr_error_f = np.inf
+            else:
+                V = np.abs(V / values_f)
+                relative_abs_error_f = np.sum(V*weights_f)/nf # (np.transpose(V) @ Wf @ V).item() / nf
+                V = V**2
+                relative_sqr_error_f = np.sqrt((np.transpose(V) @ Wf @ V).item() / nf)
         if t_df is not None and len(t_df)>0:
             V = values_df - Cdf @ g
             error_df = (np.transpose(V) @ Wdf @ V).item()
-            V = np.abs(V / values_df) 
-            relative_abs_error_df = np.sum(V*weights_df)/ndf # (np.transpose(V) @ Wdf @ V).item() / ndf
-            V = V**2
-            relative_sqr_error_df = np.sqrt((np.transpose(V) @ Wdf @ V).item() / ndf) 
+            if np.any(values_df == 0 ):
+                relative_abs_error_df = np.inf
+                relative_sqr_error_df = np.inf
+            else:
+                V = np.abs(V / values_df) 
+                relative_abs_error_df = np.sum(V*weights_df)/ndf # (np.transpose(V) @ Wdf @ V).item() / ndf
+                V = V**2
+                relative_sqr_error_df = np.sqrt((np.transpose(V) @ Wdf @ V).item() / ndf) 
         if t_d2f is not None and len(t_d2f):
             V = values_d2f - Cd2f @ g
             error_d2f = (np.transpose(V) @ Wd2f @ V).item()
-            V = np.abs(V / values_d2f) 
-            relative_abs_error_d2f = np.sum(V*weights_d2f)/nd2f # (np.transpose(V) @ Wd2f @ V).item() / nd2f
-            V = V**2
-            relative_sqr_error_d2f = np.sqrt((np.transpose(V) @ Wd2f @ V).item() / nd2f)
+            if np.any(values_d2f == 0 ):
+                relative_abs_error_d2f = np.inf
+                relative_sqr_error_d2f = np.inf
+            else:
+                V = np.abs(V / values_d2f) 
+                relative_abs_error_d2f = np.sum(V*weights_d2f)/nd2f # (np.transpose(V) @ Wd2f @ V).item() / nd2f
+                V = V**2
+                relative_sqr_error_d2f = np.sqrt((np.transpose(V) @ Wd2f @ V).item() / nd2f)
         if t_int_a is not None and len(t_int_a)>0:
             V = values_int - Cint @ g
             error_int = (np.transpose(V) @ Wint @ V).item()
-            V = np.abs(V / values_int) 
-            relative_abs_error_int = np.sum(V*weights_int)/nint # (np.transpose(V) @ Wint @ V).item() / nint
-            V = V**2
-            relative_sqr_error_int = np.sqrt((np.transpose(V) @ Wint @ V).item() / nint)
+            if np.any(values_int == 0 ):
+                relative_abs_error_int = np.inf
+                relative_sqr_error_int = np.inf
+            else:
+                V = np.abs(V / values_int) 
+                relative_abs_error_int = np.sum(V*weights_int)/nint # (np.transpose(V) @ Wint @ V).item() / nint
+                V = V**2
+                relative_sqr_error_int = np.sqrt((np.transpose(V) @ Wint @ V).item() / nint)
             
         error_penalty = (np.transpose(g) @ K @ g).item()
 
@@ -419,8 +454,8 @@ def FunctionalSmoothingSpline(
 		
         return	{   'x':x, 
                     'y':y, \
-                'g':g, \
-                'gamma':g2, \
+                'g':g.flatten(), \
+                'gamma':g2.flatten(), \
                 'knots':knots, \
                 'error_total':error_total, \
                 'error_f':error_f, \
