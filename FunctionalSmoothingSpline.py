@@ -30,8 +30,9 @@
 
 import numpy as np
 from numba import njit,types
-from MyLemke2 import *
+from MyLemke import *
 import cvxopt
+import scipy.optimize as optimize
 
 def FunctionalSmoothingSpline(
 			t_f = None,           # array of observation moments
@@ -315,31 +316,90 @@ def FunctionalSmoothingSpline(
         
     #Calculation of g and gamma
     if All_Positive:
-        if method == "Lemke":
-            g, exit_code, exit_string = Lemke(A, -D, maxIter=10000)
-        else:
-            if method == "Lemke_njit":
+        match method:
+            case "Lemke":
+                g, exit_code, exit_string = Lemke(A, -D, maxIter=10000)
+            case "Lemke_njit":
                 g, exit_code, exit_string = Lemke_njit(A, -D, maxIter=10000)
-            else:
-                if method == "cvxopt":
-                    args = [cvxopt.matrix(A), cvxopt.matrix(-D)]
-                    args.extend([cvxopt.matrix(-np.eye(m)), cvxopt.matrix(np.zeros(m))])
-                    sol = cvxopt.solvers.qp(*args)
-                    if 'optimal' not in sol['status']:
-                        return [np.nan]
-                    else:
-                        print("cvxopt")
-                        g = np.array(sol['x']).reshape((A.shape[1],))
+            case "cvxopt":
+                args = [cvxopt.matrix(A), cvxopt.matrix(-D)]
+                args.extend([cvxopt.matrix(-np.eye(m)), cvxopt.matrix(np.zeros(m))])
+                sol = cvxopt.solvers.qp(*args)
+                if 'optimal' not in sol['status']:
+                    return [np.nan]
                 else:
-                    assert method in ["Lemke","Lemke_njit","cvxopt"], 'incorrect method specified'
+                    print("cvxopt")
+                    g = np.array(sol['x']).reshape((A.shape[1],))
+            case "exp":
 
+                def loss(g):
+                    gamma = inv_R @ t_Q @ g
+                    g2 = np.append([0], gamma)
+                    g2 = np.append(g2, 0)
+                    S = alpha * g.T @ K @ g
+                    if t_f is not None and len(t_f) > 0:
+                        k = 0
+                        for i in range(nf):
+                            while knots[k] <= t_f[i] and knots[k + 1] < t_f[i] and k < knots_number:  # find first k, that knots[k+1]>t_f[i]
+                                k += 1
+                            hk_m = t_f[i] - knots[k]
+                            hk_p = knots[k + 1] - t_f[i]
+                            Value_f =  hk_m/h[k]*g[k+1]\
+                                      +hk_p/h[k]*g[k] \
+                                      -hk_m*hk_p*(h[k]+hk_m)/(6*h[k])*g2[k+1] \
+                                      -hk_m*hk_p*(h[k]+hk_p)/(6*h[k])*g2[k]
+                            S += weights_f[i]*((values_f[i]-np.exp(Value_f))**2)
+
+                    if t_df is not None and len(t_df) > 0:
+                        k = 0
+                        for i in range(ndf):
+                            while knots[k] <= t_df[i] and knots[k + 1] < t_df[i] and k < knots_number:  # find first k, that knots[k+1]>t_df[i]
+                                k += 1
+                            hk_m = t_df[i] - knots[k]
+                            hk_p = knots[k + 1] - t_df[i]
+                            Value_f =  hk_m/h[k]*g[k+1]\
+                                      +hk_p/h[k]*g[k] \
+                                      -hk_m*hk_p*(h[k]+hk_m)/(6*h[k])*g2[k+1] \
+                                      -hk_m*hk_p*(h[k]+hk_p)/(6*h[k])*g2[k]
+                            Value_df = (g[k+1]-g[k])/h[k] \
+                                      -(h[k]/6-hk_m**2/(2*h[k]))*g2[k+1] \
+                                      +(h[k]/6-hk_p**2/(2*h[k]))*g2[k]
+                            S += coef_df*weights_df[i]*((values_df[i]-np.exp(Value_f)*Value_df)**2)
+
+                    if t_d2f is not None and len(t_d2f) > 0:
+                        k = 0
+                        for i in range(nd2f):
+                            while knots[k] <= t_d2f[i] and knots[k + 1] < t_d2f[i] and k < knots_number:  # find first k, that knots[k+1]>t_d2f[i]
+                                k += 1
+                            hk_m = t_d2f[i] - knots[k]
+                            hk_p = knots[k + 1] - t_d2f[i]
+                            Value_f =  hk_m/h[k]*g[k+1]\
+                                      +hk_p/h[k]*g[k] \
+                                      -hk_m*hk_p*(h[k]+hk_m)/(6*h[k])*g2[k+1] \
+                                      -hk_m*hk_p*(h[k]+hk_p)/(6*h[k])*g2[k]
+                            Value_df = (g[k+1]-g[k])/h[k] \
+                                      -(h[k]/6-hk_m**2/(2*h[k]))*g2[k+1] \
+                                      +(h[k]/6-hk_p**2/(2*h[k]))*g2[k]
+                            Value_d2f = hk_m/h[k]*g2[k+1] \
+                                       +hk_p/h[k]*g2[k]
+                            S += coef_d2f*weights_d2f[i]*((values_d2f[i]-np.exp(Value_f)*(Value_df**2+Value_d2f))**2)
+
+                    return S
+
+                initial_g = np.zeros(m)
+                res = optimize.minimize(loss, initial_g)
+                #print(res)
+                g = res.x
+
+            case _:
+                assert method in ["Lemke","Lemke_njit","cvxopt","exp"], 'incorrect method specified, only "Lemke","Lemke_njit","cvxopt","exp" methods are possible'
         if g[0] == np.nan:
             print("g is np.nan")
             print("alpha = ", alpha)
             return np.array([np.nan])
         g = g.reshape((m,1))
     else:
-        g = np.linalg.solve(A , D)
+        g = np.linalg.solve(A, D)
     gamma = inv_R @ t_Q @ g   #After that spline is completely defined via g and gamma
 	
 	
@@ -361,6 +421,8 @@ def FunctionalSmoothingSpline(
             hk_m = x[j] - knots[k]
             hk_p = knots[k + 1] - x[j]
             y[j] = (hk_m*g[k + 1] + hk_p*g[k])/h[k] - 1/6*hk_m*hk_p*(g2[k + 1]*(1 + hk_m/h[k]) + g2[k]*(1 + hk_p/h[k])  )
+        if All_Positive and method in ["exp"]:
+            y = np.exp(y)
 
     else: #return integral function F(t)
         L = 0 
